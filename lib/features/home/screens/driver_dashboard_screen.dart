@@ -13,8 +13,7 @@ class DriverDashboardScreen extends ConsumerStatefulWidget {
       _DriverDashboardScreenState();
 }
 
-class _DriverDashboardScreenState
-    extends ConsumerState<DriverDashboardScreen> {
+class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen> {
   bool _isOnline = false;
 
   @override
@@ -29,17 +28,17 @@ class _DriverDashboardScreenState
         title: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(4),
+              padding: const EdgeInsets.all(2),
               decoration: BoxDecoration(
-                color: AppColors.primary,
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(6),
                 child: Image.asset(
-                  'assets/images/app-logo.png',
-                  width: 24,
-                  height: 24,
+                  'assets/images/appLogo.png',
+                  width: 28,
+                  height: 28,
                   fit: BoxFit.contain,
                 ),
               ),
@@ -118,7 +117,9 @@ class _DriverDashboardScreenState
                       Switch(
                         value: _isOnline,
                         activeThumbColor: AppColors.primary,
-                        activeTrackColor: AppColors.primary.withValues(alpha: 0.3),
+                        activeTrackColor: AppColors.primary.withValues(
+                          alpha: 0.3,
+                        ),
                         onChanged: (val) {
                           setState(() {
                             _isOnline = val;
@@ -127,7 +128,8 @@ class _DriverDashboardScreenState
                             AppFlushbar.success(
                               context,
                               title: 'Duty Status: ONLINE',
-                              message: 'You are now online and ready to receive ride requests!',
+                              message:
+                                  'You are now online and ready to receive ride requests!',
                             );
                           } else {
                             AppFlushbar.warning(
@@ -165,14 +167,13 @@ class _DriverDashboardScreenState
                       children: [
                         const Text(
                           "Today's Earnings",
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
-                          ),
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: AppColors.primary,
                             borderRadius: BorderRadius.circular(12),
@@ -226,17 +227,19 @@ class _DriverDashboardScreenState
               _buildSummaryTile(
                 icon: Icons.person_search,
                 title: 'KYC Document Verification',
-                subtitle:
-                    'DL: ${kycState.kycData.drivingLicenseNumber.isNotEmpty ? kycState.kycData.drivingLicenseNumber : "DL1420110012345"}',
-                isVerified: true,
+                subtitle: kycState.kycData.drivingLicenseNumber.isNotEmpty
+                    ? 'DL: ${kycState.kycData.drivingLicenseNumber} • ${kycState.kycData.kycStatus.isNotEmpty ? kycState.kycData.kycStatus.toUpperCase() : "SUBMITTED"}'
+                    : 'Not submitted yet',
+                isVerified: kycState.kycData.isKycApproved,
               ),
               const SizedBox(height: 10),
               _buildSummaryTile(
                 icon: Icons.directions_car,
                 title: 'Registered Vehicle',
-                subtitle:
-                    '${vehicleState.vehicleData.make.isNotEmpty ? vehicleState.vehicleData.make : "Maruti"} ${vehicleState.vehicleData.model.isNotEmpty ? vehicleState.vehicleData.model : "Swift Dzire"} (${vehicleState.vehicleData.registrationNumber.isNotEmpty ? vehicleState.vehicleData.registrationNumber : "DL01AB1234"})',
-                isVerified: true,
+                subtitle: vehicleState.vehicleData.hasVehicle
+                    ? '${vehicleState.vehicleData.make} ${vehicleState.vehicleData.model} (${vehicleState.vehicleData.registrationNumber})'
+                    : 'No vehicle registered',
+                isVerified: vehicleState.vehicleData.isApproved,
               ),
 
               const SizedBox(height: 20),

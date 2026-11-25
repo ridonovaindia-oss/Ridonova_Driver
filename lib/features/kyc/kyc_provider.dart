@@ -26,6 +26,10 @@ class KycNotifier extends StateNotifier<KycState> {
     state = state.copyWith(kycData: newData);
   }
 
+  void reset() {
+    state = KycState(kycData: KycModel());
+  }
+
   Future<bool> submitKycDetails({String? token}) async {
     final kyc = state.kycData;
 

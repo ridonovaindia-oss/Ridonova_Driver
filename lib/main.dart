@@ -1,9 +1,25 @@
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'core/services/navigation_service.dart';
+import 'core/services/notification_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/splash_screen.dart';
+import 'firebase_options.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Register background message handler BEFORE Firebase initialization
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
+  // Initialize Firebase with platform specific options
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Initialize Push Notification Service (foreground, background, terminated states & local notifications)
+  await NotificationService().initialize();
+
   runApp(const ProviderScope(child: RidonovaDriverApp()));
 }
 
@@ -12,11 +28,16 @@ class RidonovaDriverApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(title: 'Ridonova Captain Driver', debugShowCheckedModeBanner: false, theme: AppTheme.lightTheme, home: const SplashScreen());
+    return MaterialApp(
+      title: 'Ridonova Captain Driver',
+      navigatorKey: AppNavigator.navigatorKey,
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.lightTheme,
+      home: const SplashScreen(),
+    );
   }
 }
 
-//  Ridonova@2026Driver
 // #	Status Name (API / DB)	Driver Side Action / Meaning	Customer Mobile App UI
 // 1	searching (ya pending)	Customer ne ride request ki hai. Nearby drivers ko popup request ja rahi hai.	Radar animation / "Looking for nearby drivers..."
 // 2	accepted	Driver ne ride accept kar li hai aur pickup ki taraf nikal gaya hai.	Captain details (Name, Car, Rating) + 4-digit START OTP PIN display hota hai.

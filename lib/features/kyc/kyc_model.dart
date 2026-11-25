@@ -1,4 +1,6 @@
 class KycModel {
+  final String id;
+  final String userId;
   final String fullName;
   final String email;
   final String mobileNumber;
@@ -15,8 +17,12 @@ class KycModel {
   final String bankIfscCode;
   final String bankName;
   final String upiId;
+  final String kycStatus;
+  final double? rating;
 
   KycModel({
+    this.id = '',
+    this.userId = '',
     this.fullName = '',
     this.email = '',
     this.mobileNumber = '',
@@ -33,9 +39,44 @@ class KycModel {
     this.bankIfscCode = '',
     this.bankName = '',
     this.upiId = '',
+    this.kycStatus = '',
+    this.rating,
   });
 
+  bool get isKycApproved {
+    final s = kycStatus.toLowerCase().trim();
+    return s == 'approved' || s == 'verified';
+  }
+
+  bool get isKycRejected => kycStatus.toLowerCase().trim() == 'rejected';
+
+  bool get isKycPending {
+    final s = kycStatus.toLowerCase().trim();
+    return s == 'pending' || s == 'submitted' || s == 'under_review';
+  }
+
+  bool get hasDriverProfile =>
+      id.isNotEmpty ||
+      aadharNumber.isNotEmpty ||
+      panNumber.isNotEmpty ||
+      drivingLicenseNumber.isNotEmpty ||
+      kycStatus.isNotEmpty;
+
+  String get maskedBankSummary {
+    if (bankAccountNumber.isNotEmpty) {
+      final last4 = bankAccountNumber.length > 4
+          ? bankAccountNumber.substring(bankAccountNumber.length - 4)
+          : bankAccountNumber;
+      final prefix = bankName.isNotEmpty ? bankName : 'Bank';
+      return '$prefix (••••$last4)';
+    }
+    if (upiId.isNotEmpty) return upiId;
+    return '';
+  }
+
   KycModel copyWith({
+    String? id,
+    String? userId,
     String? fullName,
     String? email,
     String? mobileNumber,
@@ -52,8 +93,12 @@ class KycModel {
     String? bankIfscCode,
     String? bankName,
     String? upiId,
+    String? kycStatus,
+    double? rating,
   }) {
     return KycModel(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
       fullName: fullName ?? this.fullName,
       email: email ?? this.email,
       mobileNumber: mobileNumber ?? this.mobileNumber,
@@ -70,6 +115,8 @@ class KycModel {
       bankIfscCode: bankIfscCode ?? this.bankIfscCode,
       bankName: bankName ?? this.bankName,
       upiId: upiId ?? this.upiId,
+      kycStatus: kycStatus ?? this.kycStatus,
+      rating: rating ?? this.rating,
     );
   }
 
@@ -95,23 +142,64 @@ class KycModel {
   }
 
   factory KycModel.fromJson(Map<String, dynamic> json) {
+    final rawRating = json['rating'] ?? json['avgRating'] ?? json['avg_rating'];
+    double? parsedRating;
+    if (rawRating is num) {
+      parsedRating = rawRating.toDouble();
+    } else if (rawRating != null) {
+      parsedRating = double.tryParse(rawRating.toString());
+    }
+
     return KycModel(
-      fullName: json['fullName'] ?? json['full_name'] ?? '',
-      email: json['email'] ?? '',
-      mobileNumber: json['phone'] ?? json['mobileNumber'] ?? json['mobile_number'] ?? '',
-      profilePhoto: json['profilePhoto'] ?? json['profile_photo'] ?? json['profilePhotoUrl'] ?? '',
-      aadharNumber: json['aadharNumber'] ?? json['aadhar_number'] ?? '',
-      aadharDocUrl: json['aadharDocUrl'] ?? json['aadhar_doc_url'] ?? '',
-      panNumber: json['panNumber'] ?? json['pan_number'] ?? '',
-      panDocUrl: json['panDocUrl'] ?? json['pan_doc_url'] ?? '',
-      drivingLicenseNumber: json['drivingLicenseNumber'] ?? json['driving_license_number'] ?? '',
-      drivingLicenseDocUrl: json['drivingLicenseDocUrl'] ?? json['driving_license_doc_url'] ?? '',
-      drivingLicenseExpiry: json['drivingLicenseExpiry'] ?? json['driving_license_expiry'] ?? '',
-      bankAccountName: json['bankAccountName'] ?? json['bank_account_name'] ?? '',
-      bankAccountNumber: json['bankAccountNumber'] ?? json['bank_account_number'] ?? '',
-      bankIfscCode: json['bankIfscCode'] ?? json['bank_ifsc_code'] ?? '',
-      bankName: json['bankName'] ?? json['bank_name'] ?? '',
-      upiId: json['upiId'] ?? json['upi_id'] ?? '',
+      id: (json['id'] ?? '').toString(),
+      userId: (json['userId'] ?? json['user_id'] ?? '').toString(),
+      fullName: (json['fullName'] ?? json['full_name'] ?? '').toString(),
+      email: (json['email'] ?? '').toString(),
+      mobileNumber:
+          (json['phone'] ?? json['mobileNumber'] ?? json['mobile_number'] ?? '')
+              .toString(),
+      profilePhoto:
+          (json['profilePhoto'] ??
+                  json['profile_photo'] ??
+                  json['profilePhotoUrl'] ??
+                  json['profile_photo_url'] ??
+                  '')
+              .toString(),
+      aadharNumber: (json['aadharNumber'] ?? json['aadhar_number'] ?? '')
+          .toString(),
+      aadharDocUrl: (json['aadharDocUrl'] ?? json['aadhar_doc_url'] ?? '')
+          .toString(),
+      panNumber: (json['panNumber'] ?? json['pan_number'] ?? '').toString(),
+      panDocUrl: (json['panDocUrl'] ?? json['pan_doc_url'] ?? '').toString(),
+      drivingLicenseNumber:
+          (json['drivingLicenseNumber'] ?? json['driving_license_number'] ?? '')
+              .toString(),
+      drivingLicenseDocUrl:
+          (json['drivingLicenseDocUrl'] ??
+                  json['driving_license_doc_url'] ??
+                  '')
+              .toString(),
+      drivingLicenseExpiry:
+          (json['drivingLicenseExpiry'] ?? json['driving_license_expiry'] ?? '')
+              .toString(),
+      bankAccountName:
+          (json['bankAccountName'] ?? json['bank_account_name'] ?? '')
+              .toString(),
+      bankAccountNumber:
+          (json['bankAccountNumber'] ?? json['bank_account_number'] ?? '')
+              .toString(),
+      bankIfscCode: (json['bankIfscCode'] ?? json['bank_ifsc_code'] ?? '')
+          .toString(),
+      bankName: (json['bankName'] ?? json['bank_name'] ?? '').toString(),
+      upiId: (json['upiId'] ?? json['upi_id'] ?? '').toString(),
+      kycStatus:
+          (json['kycStatus'] ??
+                  json['kyc_status'] ??
+                  json['verificationStatus'] ??
+                  json['verification_status'] ??
+                  '')
+              .toString(),
+      rating: parsedRating,
     );
   }
 }

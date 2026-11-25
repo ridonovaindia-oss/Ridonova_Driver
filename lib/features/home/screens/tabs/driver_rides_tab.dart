@@ -6,6 +6,9 @@ import '../../../../core/network/api_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import 'package:ridenovo_rider_mobile_app/features/rides/models/ride_history_model.dart';
 import '../../../rides/ride_provider.dart';
+import '../../../rides/widgets/driver_ride_invoice_sheet.dart';
+import '../../../lost_items/presentation/driver_lost_items_screen.dart';
+import '../../../lost_items/providers/driver_lost_item_provider.dart';
 
 final rideHistoryRefreshTriggerProvider = StateProvider<int>((ref) => 0);
 
@@ -119,6 +122,36 @@ class _DriverRidesTabState extends ConsumerState<DriverRidesTab> {
         title: const Text('History'),
         backgroundColor: AppColors.secondary,
         centerTitle: true,
+        actions: [
+          IconButton(
+            tooltip: 'Lost & Found Inquiries',
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.find_in_page_outlined),
+                if (ref.watch(driverLostItemProvider).pendingCount > 0)
+                  Positioned(
+                    top: -2,
+                    right: -2,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                      child: Text(
+                        '${ref.watch(driverLostItemProvider).pendingCount}',
+                        style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const DriverLostItemsScreen()),
+              );
+            },
+          ),
+        ],
       ),
       body: SafeArea(
         child: Padding(
@@ -285,6 +318,76 @@ class _DriverRidesTabState extends ConsumerState<DriverRidesTab> {
                                                 ),
                                               ],
                                             ),
+                                            if (isCompleted) ...[
+                                              const SizedBox(height: 12),
+                                              const Divider(height: 1),
+                                              const SizedBox(height: 10),
+                                              Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: InkWell(
+                                                      onTap: () => showDriverRideInvoiceSheet(
+                                                        context,
+                                                        rideId: ride.id,
+                                                        preloadedRiderName: ride.riderName,
+                                                        preloadedTotal: ride.fare,
+                                                      ),
+                                                      borderRadius: BorderRadius.circular(8),
+                                                      child: Container(
+                                                        padding: const EdgeInsets.symmetric(vertical: 8),
+                                                        decoration: BoxDecoration(
+                                                          color: AppColors.secondary.withValues(alpha: 0.08),
+                                                          borderRadius: BorderRadius.circular(8),
+                                                          border: Border.all(color: AppColors.secondary.withValues(alpha: 0.2)),
+                                                        ),
+                                                        child: const Row(
+                                                          mainAxisAlignment: MainAxisAlignment.center,
+                                                          children: [
+                                                            Icon(Icons.receipt_long_rounded, size: 15, color: AppColors.secondary),
+                                                            SizedBox(width: 6),
+                                                            Text(
+                                                              'Fare Breakdown',
+                                                              style: TextStyle(
+                                                                fontSize: 12,
+                                                                fontWeight: FontWeight.bold,
+                                                                color: AppColors.secondary,
+                                                              ),
+                                                             ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  InkWell(
+                                                    onTap: () => RideNotifier.openPrintableInvoice(ride.id),
+                                                    borderRadius: BorderRadius.circular(8),
+                                                    child: Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                                      decoration: BoxDecoration(
+                                                        color: AppColors.secondary,
+                                                        borderRadius: BorderRadius.circular(8),
+                                                      ),
+                                                      child: const Row(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          Icon(Icons.print_rounded, size: 14, color: Colors.white),
+                                                          SizedBox(width: 5),
+                                                          Text(
+                                                            'PDF / Print',
+                                                            style: TextStyle(
+                                                              fontSize: 12,
+                                                              fontWeight: FontWeight.bold,
+                                                              color: Colors.white,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
                                           ],
                                         ),
                                       ),

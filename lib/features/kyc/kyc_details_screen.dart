@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/app_flushbar.dart';
 import '../auth/auth_provider.dart';
+import '../auth/widgets/gmail_verification_dialog.dart';
 import '../vehicle/vehicle_details_screen.dart';
 import 'kyc_model.dart';
 import 'kyc_provider.dart';
@@ -397,12 +398,43 @@ class _KycDetailsScreenState extends ConsumerState<KycDetailsScreen> {
                     TextFormField(
                       controller: _emailController,
                       keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(
-                        labelText: 'Email Address *',
-                        hintText: 'e.g. ramesh@example.com',
-                        prefixIcon: Icon(Icons.email_outlined),
+                      decoration: InputDecoration(
+                        labelText: 'Gmail Address *',
+                        hintText: 'e.g. ramesh@gmail.com',
+                        prefixIcon: const Icon(Icons.email_outlined),
+                        suffixIcon: TextButton(
+                          onPressed: () async {
+                            final verified = await GmailVerificationSheet.show(
+                              context,
+                              initialEmail: _emailController.text.trim(),
+                            );
+                            if (verified != null && mounted) {
+                              setState(() {
+                                _emailController.text = verified;
+                              });
+                              await ref.read(authProvider.notifier).fetchProfile();
+                            }
+                          },
+                          child: Text(
+                            ref.watch(authProvider).user?.isEmailVerified == true
+                                ? 'Verified ✓'
+                                : 'Verify',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: ref.watch(authProvider).user?.isEmailVerified == true
+                                  ? AppColors.success
+                                  : AppColors.primary,
+                            ),
+                          ),
+                        ),
                       ),
-                      validator: (val) => val == null || !val.contains('@') ? 'Enter valid Email address' : null,
+                      validator: (val) {
+                        final clean = (val ?? '').trim().toLowerCase();
+                        if (clean.isEmpty || (!clean.endsWith('@gmail.com') && !clean.endsWith('@googlemail.com'))) {
+                          return 'Enter a valid @gmail.com address';
+                        }
+                        return null;
+                      },
                     ),
                     const SizedBox(height: 16),
                     TextFormField(

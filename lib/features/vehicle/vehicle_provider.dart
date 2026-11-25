@@ -40,6 +40,10 @@ class VehicleNotifier extends StateNotifier<VehicleState> {
     state = state.copyWith(vehicleData: newData);
   }
 
+  void reset() {
+    state = VehicleState(vehicleData: VehicleModel());
+  }
+
   Future<bool> registerVehicle({String? token}) async {
     final v = state.vehicleData;
 
@@ -61,11 +65,12 @@ class VehicleNotifier extends StateNotifier<VehicleState> {
 
     state = state.copyWith(status: VehicleStatus.loading, errorMessage: null);
 
-    // POST /api/driver/vehicle using ApiService with direct raw JSON Map (No request model used)
+    // POST /api/driver/vehicle using ApiService with direct raw JSON Map
     final response = await _apiService.post(
       ApiConstants.driverVehicle,
       data: {
         "vehicleTypeId": v.vehicleTypeId,
+        if (v.vehicleTypeName.isNotEmpty) "vehicleType": v.vehicleTypeName,
         "registrationNumber": v.registrationNumber,
         "make": v.make,
         "model": v.model,

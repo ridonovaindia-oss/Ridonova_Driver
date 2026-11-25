@@ -4,11 +4,12 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../core/network/api_constants.dart';
+import '../../core/network/api_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/app_flushbar.dart';
 import '../auth/auth_provider.dart';
 import '../home/screens/main_navigation_screen.dart';
-import 'package:uuid/uuid.dart';
 import 'vehicle_model.dart';
 import 'vehicle_provider.dart';
 
@@ -29,11 +30,11 @@ class _VehicleDetailsScreenState extends ConsumerState<VehicleDetailsScreen> {
   late TextEditingController _colorController;
   late TextEditingController _insuranceExpiryController;
 
-  final Uuid _uuid = const Uuid();
-  late String _carUuid;
-  late String _bikeUuid;
-  late String _autoUuid;
-  late String _selectedVehicleType;
+  String _carTypeId = 'car';
+  String _bikeTypeId = 'bike';
+  String _autoTypeId = 'auto';
+  String _selectedVehicleType = 'car';
+  String _selectedVehicleTypeName = 'car';
   String _selectedFuelType = 'cng';
 
   String? _rcDocBase64;
@@ -50,16 +51,58 @@ class _VehicleDetailsScreenState extends ConsumerState<VehicleDetailsScreen> {
   @override
   void initState() {
     super.initState();
-    _carUuid = _uuid.v4();
-    _bikeUuid = _uuid.v4();
-    _autoUuid = _uuid.v4();
-    _selectedVehicleType = _carUuid;
+    _selectedVehicleType = _carTypeId;
+    _selectedVehicleTypeName = 'car';
     _regNumberController = TextEditingController();
     _makeController = TextEditingController();
     _modelController = TextEditingController();
     _yearController = TextEditingController(text: DateTime.now().year.toString());
     _colorController = TextEditingController();
     _insuranceExpiryController = TextEditingController();
+    _loadRealVehicleTypes();
+  }
+
+  Future<void> _loadRealVehicleTypes() async {
+    try {
+      final token = ref.read(authProvider).authToken;
+      final resp = await ApiService().get(ApiConstants.vehicleTypes, token: token);
+      if (!resp.isSuccess || resp.data == null) return;
+      final raw = resp.data is String ? jsonDecode(resp.data) : resp.data;
+      final data = raw is Map ? (raw['data'] ?? raw) : raw;
+      final list = data is Map ? (data['vehicleTypes'] ?? data['vehicle_types'] ?? data['types']) : data;
+      if (list is! List) return;
+
+      String? carId;
+      String? bikeId;
+      String? autoId;
+      for (final item in list) {
+        if (item is! Map) continue;
+        final id = (item['id'] ?? '').toString();
+        final name = (item['name'] ?? '').toString().toLowerCase();
+        if (id.isEmpty) continue;
+        if (bikeId == null && (name.contains('bike') || name.contains('moto') || name.contains('scooter'))) {
+          bikeId = id;
+        } else if (autoId == null && (name.contains('auto') || name.contains('rickshaw'))) {
+          autoId = id;
+        } else if (carId == null && (name.contains('car') || name.contains('cab') || name.contains('sedan') || name.contains('mini') || name.contains('suv'))) {
+          carId = id;
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        final prevCat = _selectedVehicleTypeName;
+        if (carId != null) _carTypeId = carId;
+        if (bikeId != null) _bikeTypeId = bikeId;
+        if (autoId != null) _autoTypeId = autoId;
+        if (prevCat == 'bike') {
+          _selectedVehicleType = _bikeTypeId;
+        } else if (prevCat == 'auto') {
+          _selectedVehicleType = _autoTypeId;
+        } else {
+          _selectedVehicleType = _carTypeId;
+        }
+      });
+    } catch (_) {}
   }
 
   @override
@@ -201,6 +244,7 @@ class _VehicleDetailsScreenState extends ConsumerState<VehicleDetailsScreen> {
 
       final vehicleModel = VehicleModel(
         vehicleTypeId: _selectedVehicleType,
+        vehicleTypeName: _selectedVehicleTypeName,
         registrationNumber: _regNumberController.text.trim().toUpperCase(),
         make: _makeController.text.trim(),
         model: _modelController.text.trim(),
@@ -334,11 +378,11 @@ class _VehicleDetailsScreenState extends ConsumerState<VehicleDetailsScreen> {
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        _buildVehicleTypeOption(id: _carUuid, title: 'Cab / Car', icon: Icons.local_taxi),
+                        _buildVehicleTypeOption(id: _carTypeId, category: 'car', title: 'Cab / Car', icon: Icons.local_taxi),
                         const SizedBox(width: 8),
-                        _buildVehicleTypeOption(id: _bikeUuid, title: 'Bike / Scooter', icon: Icons.two_wheeler),
+                        _buildVehicleTypeOption(id: _bikeTypeId, category: 'bike', title: 'Bike / Scooter', icon: Icons.two_wheeler),
                         const SizedBox(width: 8),
-                        _buildVehicleTypeOption(id: _autoUuid, title: 'Auto', icon: Icons.electric_rickshaw),
+                        _buildVehicleTypeOption(id: _autoTypeId, category: 'auto', title: 'Auto', icon: Icons.electric_rickshaw),
                       ],
                     ),
                     const SizedBox(height: 16),
@@ -524,13 +568,19 @@ class _VehicleDetailsScreenState extends ConsumerState<VehicleDetailsScreen> {
     );
   }
 
-  Widget _buildVehicleTypeOption({required String id, required String title, required IconData icon}) {
-    final isSelected = _selectedVehicleType == id;
+  Widget _buildVehicleTypeOption({
+    required String id,
+    required String category,
+    required String title,
+    required IconData icon,
+  }) {
+    final isSelected = _selectedVehicleType == id || _selectedVehicleTypeName == category;
     return Expanded(
       child: GestureDetector(
         onTap: () {
           setState(() {
             _selectedVehicleType = id;
+            _selectedVehicleTypeName = category;
           });
         },
         child: Container(

@@ -16,7 +16,8 @@ class SplashScreen extends ConsumerStatefulWidget {
   ConsumerState<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerProviderStateMixin {
+class _SplashScreenState extends ConsumerState<SplashScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   late Animation<double> _fadeAnimation;
@@ -24,11 +25,20 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500));
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    );
 
-    _scaleAnimation = Tween<double>(begin: 0.7, end: 1.0).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
+    _scaleAnimation = Tween<double>(
+      begin: 0.7,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
 
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
 
     _controller.forward();
 
@@ -65,7 +75,12 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
         authState.authToken != null &&
         authState.authToken!.isNotEmpty) {
       final bool isNewUser = authState.user?.isNewUser ?? false;
-      nextScreen = isNewUser ? const KycDetailsScreen() : const MainNavigationScreen();
+
+      if (isNewUser) {
+        nextScreen = const KycDetailsScreen();
+      } else {
+        nextScreen = const MainNavigationScreen();
+      }
     }
 
     Navigator.pushReplacement(
@@ -100,7 +115,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
           height: double.infinity,
           decoration: const BoxDecoration(
             gradient: LinearGradient(
-              colors: [AppColors.secondary, Color(0xFF0A2550), Color(0xFF030D1F)],
+              colors: [
+                AppColors.secondary,
+                Color(0xFF0A2550),
+                Color(0xFF030D1F),
+              ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -114,7 +133,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
                 child: Container(
                   width: 300,
                   height: 300,
-                  decoration: BoxDecoration(shape: BoxShape.circle, color: AppColors.primary.withValues(alpha: 0.15)),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.primary.withValues(alpha: 0.15),
+                  ),
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
                     child: Container(color: Colors.transparent),
@@ -127,7 +149,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
                 child: Container(
                   width: 280,
                   height: 280,
-                  decoration: BoxDecoration(shape: BoxShape.circle, color: AppColors.secondary.withValues(alpha: 0.15)),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.secondary.withValues(alpha: 0.15),
+                  ),
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 70, sigmaY: 70),
                     child: Container(color: Colors.transparent),
@@ -142,41 +167,64 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // Logo Container with Glow & Gradient
+                        // Logo Container with Glow
                         Container(
-                          padding: const EdgeInsets.all(22),
+                          padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [AppColors.primary, AppColors.primaryDark],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
+                            color: Colors.white,
                             borderRadius: BorderRadius.circular(32),
                             boxShadow: [
-                              BoxShadow(color: AppColors.primary.withValues(alpha: 0.45), blurRadius: 30, offset: const Offset(0, 10)),
+                              BoxShadow(
+                                color: AppColors.primary.withValues(
+                                  alpha: 0.4,
+                                ),
+                                blurRadius: 30,
+                                offset: const Offset(0, 10),
+                              ),
                             ],
                           ),
                           child: ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
-                            child: Image.asset('assets/images/app-logo.png', width: 80, height: 80, fit: BoxFit.contain),
+                            borderRadius: BorderRadius.circular(20),
+                            child: Image.asset(
+                              'assets/images/app-logo.png',
+                              width: 112,
+                              height: 112,
+                              fit: BoxFit.contain,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 28),
                         const Text(
                           'Ridonova',
-                          style: TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w900, letterSpacing: 1.0),
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 36,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.0,
+                          ),
                         ),
                         const SizedBox(height: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 6,
+                          ),
                           decoration: BoxDecoration(
                             color: AppColors.primary.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: AppColors.primary.withValues(alpha: 0.4), width: 1),
+                            border: Border.all(
+                              color: AppColors.primary.withValues(alpha: 0.4),
+                              width: 1,
+                            ),
                           ),
                           child: const Text(
                             'CAPTAIN PARTNER',
-                            style: TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 2.0),
+                            style: TextStyle(
+                              color: AppColors.primary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 2.0,
+                            ),
                           ),
                         ),
                       ],
@@ -198,13 +246,19 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
                         height: 28,
                         child: CircularProgressIndicator(
                           strokeWidth: 2.5,
-                          valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary.withValues(alpha: 0.8)),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            AppColors.primary.withValues(alpha: 0.8),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 16),
                       Text(
                         'Secure Captain Portal',
-                        style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12, letterSpacing: 0.5),
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.5),
+                          fontSize: 12,
+                          letterSpacing: 0.5,
+                        ),
                       ),
                     ],
                   ),

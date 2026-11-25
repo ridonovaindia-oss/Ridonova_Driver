@@ -1,11 +1,21 @@
 import 'package:dio/dio.dart';
-import 'custom_log_interceptor.dart';
 import 'api_constants.dart';
+import 'custom_log_interceptor.dart';
+import 'token_refresh_interceptor.dart';
 
 class DioClient {
+  static final DioClient _instance = DioClient._internal();
+
+  factory DioClient({String? baseUrl}) {
+    if (baseUrl != null && baseUrl != _instance._dio.options.baseUrl) {
+      return DioClient._internal(baseUrl: baseUrl);
+    }
+    return _instance;
+  }
+
   late final Dio _dio;
 
-  DioClient({String? baseUrl}) {
+  DioClient._internal({String? baseUrl}) {
     _dio = Dio(
       BaseOptions(
         baseUrl: baseUrl ?? ApiConstants.baseUrl,
@@ -15,7 +25,10 @@ class DioClient {
       ),
     );
 
-    // CustomLogInterceptor for request/response logging with truncated base64 support
+    // 1. Auto Token Refresh Interceptor on 401 Unauthorized
+    _dio.interceptors.add(TokenRefreshInterceptor(dio: _dio));
+
+    // 2. CustomLogInterceptor for request/response logging with truncated base64 support
     _dio.interceptors.add(
       CustomLogInterceptor(
         requestHeader: true,

@@ -24,11 +24,17 @@ class _PhoneLoginScreenState extends ConsumerState<PhoneLoginScreen> {
   void _onSendOtp() async {
     FocusScope.of(context).unfocus();
     final authNotifier = ref.read(authProvider.notifier);
-    authNotifier.setPhoneNumber(_phoneController.text.trim());
+    await authNotifier.setPhoneNumber(_phoneController.text.trim());
 
     final success = await authNotifier.sendOtp();
     if (success && mounted) {
       Navigator.push(context, MaterialPageRoute(builder: (_) => const OtpVerifyScreen()));
+    } else if (mounted) {
+      final authState = ref.read(authProvider);
+      if (authState.isBlocked) {
+        // Take driver to OTP screen so they can see the lockout countdown timer
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const OtpVerifyScreen()));
+      }
     }
   }
 
@@ -69,7 +75,7 @@ class _PhoneLoginScreenState extends ConsumerState<PhoneLoginScreen> {
                     Row(
                       children: [
                         ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(10),
                           child: Image.asset('assets/images/app-logo.png', width: 52, height: 52, fit: BoxFit.contain),
                         ),
                         const SizedBox(width: 14),

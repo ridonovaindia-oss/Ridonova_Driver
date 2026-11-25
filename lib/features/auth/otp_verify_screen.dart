@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +6,9 @@ import '../../core/theme/app_colors.dart';
 import '../../core/utils/app_flushbar.dart';
 import '../home/screens/main_navigation_screen.dart';
 import '../kyc/kyc_details_screen.dart';
+import '../kyc/kyc_provider.dart';
+import '../vehicle/vehicle_details_screen.dart';
+import '../vehicle/vehicle_provider.dart';
 import 'auth_provider.dart';
 
 class OtpVerifyScreen extends ConsumerStatefulWidget {
@@ -20,40 +22,31 @@ class _OtpVerifyScreenState extends ConsumerState<OtpVerifyScreen> {
   final TextEditingController _pinController = TextEditingController();
   final FocusNode _pinFocusNode = FocusNode();
 
-  Timer? _timer;
-  int _secondsRemaining = 30;
-
-  @override
-  void initState() {
-    super.initState();
-    _startTimer();
-  }
-
-  void _startTimer() {
-    setState(() {
-      _secondsRemaining = 30;
-    });
-    _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_secondsRemaining > 0) {
-        setState(() {
-          _secondsRemaining--;
-        });
-      } else {
-        timer.cancel();
-      }
-    });
-  }
-
   @override
   void dispose() {
-    _timer?.cancel();
     _pinController.dispose();
     _pinFocusNode.dispose();
     super.dispose();
   }
 
+  String _formatCountdown(int totalSeconds) {
+    final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
+    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
   void _onVerify() async {
+    final authState = ref.read(authProvider);
+    if (authState.isBlocked) {
+      AppFlushbar.warning(
+        context,
+        title: 'Account Locked',
+        message:
+            'Account is temporarily locked. Please wait until the timer finishes.',
+      );
+      return;
+    }
+
     FocusScope.of(context).unfocus();
     final otp = _pinController.text.trim();
     final authNotifier = ref.read(authProvider.notifier);
@@ -61,16 +54,47 @@ class _OtpVerifyScreenState extends ConsumerState<OtpVerifyScreen> {
 
     final success = await authNotifier.verifyOtp();
     if (success && mounted) {
-      final authState = ref.read(authProvider);
-      final bool isNewUser = authState.user?.isNewUser ?? true;
+      final updatedAuthState = ref.read(authProvider);
+      final bool isNewUser = updatedAuthState.user?.isNewUser ?? false;
 
-      AppFlushbar.success(context, title: 'OTP Verified', message: 'Welcome to Ridonova!');
+      // Ensure fresh profile, KYC, and vehicle records are loaded
+      await authNotifier.fetchProfile();
+      if (!mounted) return;
 
-      final Widget nextScreen = isNewUser ? const KycDetailsScreen() : const MainNavigationScreen();
+      AppFlushbar.success(
+        context,
+        title: 'OTP Verified',
+        message: 'Welcome to Ridonova Captain!',
+      );
 
-      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => nextScreen), (route) => false);
+      // Step 4: Login Post-Verification Routing Logic
+      // Existing driver -> Live Driver Dashboard (MainNavigationScreen)
+      // New driver -> KYC Document Screen or Vehicle Details Screen
+      Widget nextScreen;
+      if (isNewUser) {
+        final kyc = ref.read(kycProvider).kycData;
+        final vehicle = ref.read(vehicleProvider).vehicleData;
+        if (kyc.drivingLicenseNumber.isNotEmpty &&
+            vehicle.registrationNumber.isEmpty) {
+          nextScreen = const VehicleDetailsScreen();
+        } else {
+          nextScreen = const KycDetailsScreen();
+        }
+      } else {
+        nextScreen = const MainNavigationScreen();
+      }
+
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => nextScreen),
+        (route) => false,
+      );
     } else if (mounted) {
-      AppFlushbar.error(context, title: 'Verification Failed', message: 'Invalid OTP code. Please enter valid code.');
+      final latestState = ref.read(authProvider);
+      final err =
+          latestState.errorMessage ??
+          'Invalid OTP code. Please enter valid code.';
+      AppFlushbar.error(context, title: 'Verification Failed', message: err);
     }
   }
 
@@ -82,7 +106,11 @@ class _OtpVerifyScreenState extends ConsumerState<OtpVerifyScreen> {
     final defaultPinTheme = PinTheme(
       width: 48,
       height: 56,
-      textStyle: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+      textStyle: const TextStyle(
+        fontSize: 22,
+        fontWeight: FontWeight.bold,
+        color: AppColors.textPrimary,
+      ),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -93,7 +121,12 @@ class _OtpVerifyScreenState extends ConsumerState<OtpVerifyScreen> {
     final focusedPinTheme = defaultPinTheme.copyWith(
       decoration: defaultPinTheme.decoration!.copyWith(
         border: Border.all(color: AppColors.primary, width: 2),
-        boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.2), blurRadius: 8)],
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.2),
+            blurRadius: 8,
+          ),
+        ],
       ),
     );
 
@@ -101,6 +134,19 @@ class _OtpVerifyScreenState extends ConsumerState<OtpVerifyScreen> {
       decoration: defaultPinTheme.decoration!.copyWith(
         color: const Color(0xFFF8FAFC),
         border: Border.all(color: AppColors.primary, width: 1.5),
+      ),
+    );
+
+    final disabledPinTheme = defaultPinTheme.copyWith(
+      textStyle: const TextStyle(
+        fontSize: 22,
+        fontWeight: FontWeight.bold,
+        color: Color(0xFF94A3B8),
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
       ),
     );
 
@@ -116,11 +162,17 @@ class _OtpVerifyScreenState extends ConsumerState<OtpVerifyScreen> {
           title: const Text('OTP Verification'),
           backgroundColor: AppColors.secondary,
           elevation: 0,
-          leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20), onPressed: () => Navigator.pop(context)),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+            onPressed: () => Navigator.pop(context),
+          ),
         ),
         body: SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 20.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 20.0,
+              vertical: 20.0,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -131,9 +183,16 @@ class _OtpVerifyScreenState extends ConsumerState<OtpVerifyScreen> {
                     decoration: BoxDecoration(
                       color: AppColors.primary.withValues(alpha: 0.1),
                       shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.25), width: 2),
+                      border: Border.all(
+                        color: AppColors.primary.withValues(alpha: 0.25),
+                        width: 2,
+                      ),
                     ),
-                    child: const Icon(Icons.phonelink_ring_rounded, color: AppColors.primary, size: 42),
+                    child: const Icon(
+                      Icons.phonelink_ring_rounded,
+                      color: AppColors.primary,
+                      size: 42,
+                    ),
                   ),
                 ),
 
@@ -142,7 +201,12 @@ class _OtpVerifyScreenState extends ConsumerState<OtpVerifyScreen> {
                 const Center(
                   child: Text(
                     'Verify Your Mobile Number',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.textPrimary, letterSpacing: -0.3),
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
+                      letterSpacing: -0.3,
+                    ),
                   ),
                 ),
 
@@ -151,28 +215,53 @@ class _OtpVerifyScreenState extends ConsumerState<OtpVerifyScreen> {
                 // Phone number badge with edit chip
                 Center(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: const Color(0xFFE2E8F0)),
-                      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 8)],
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.02),
+                          blurRadius: 8,
+                        ),
+                      ],
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Text('Code sent to ', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                        const Text(
+                          'Code sent to ',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
                         Text(
                           '+91 ${authState.phoneNumber}',
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                          ),
                         ),
                         const SizedBox(width: 8),
                         GestureDetector(
                           onTap: () => Navigator.pop(context),
                           child: Container(
                             padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.12), shape: BoxShape.circle),
-                            child: const Icon(Icons.edit_rounded, size: 14, color: AppColors.primary),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.12),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.edit_rounded,
+                              size: 14,
+                              color: AppColors.primary,
+                            ),
                           ),
                         ),
                       ],
@@ -180,7 +269,133 @@ class _OtpVerifyScreenState extends ConsumerState<OtpVerifyScreen> {
                   ),
                 ),
 
-                const SizedBox(height: 36),
+                const SizedBox(height: 24),
+
+                // Step 3 Lockout Red Alert Box when blocked
+                if (authState.isBlocked) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF2F2),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: const Color(0xFFFCA5A5),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: AppColors.error.withValues(alpha: 0.12),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.lock_clock_rounded,
+                                color: AppColors.error,
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            const Expanded(
+                              child: Text(
+                                'Account Temporarily Locked',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.error,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Account is temporarily locked for 10 minutes due to 3 incorrect attempts.',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF7F1D1D),
+                            height: 1.3,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.error,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.timer_outlined,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Unlock in ${_formatCountdown(authState.lockoutSecondsRemaining)}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                ] else if (authState.attemptsLeft < 3) ...[
+                  // Remaining attempts alert
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFFBEB),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: const Color(0xFFFDE68A),
+                        width: 1.2,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.warning_amber_rounded,
+                          color: Color(0xFFD97706),
+                          size: 20,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Incorrect OTP. ${authState.attemptsLeft} attempt${authState.attemptsLeft == 1 ? '' : 's'} remaining before 10-minute lockout.',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF92400E),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                ],
 
                 // Pinput 6-digit PIN Widget
                 Center(
@@ -188,64 +403,128 @@ class _OtpVerifyScreenState extends ConsumerState<OtpVerifyScreen> {
                     length: 6,
                     controller: _pinController,
                     focusNode: _pinFocusNode,
-                    defaultPinTheme: defaultPinTheme,
-                    focusedPinTheme: focusedPinTheme,
-                    submittedPinTheme: submittedPinTheme,
-                    showCursor: true,
+                    enabled:
+                        !authState.isBlocked &&
+                        authState.status != AuthStatus.loading,
+                    defaultPinTheme: authState.isBlocked
+                        ? disabledPinTheme
+                        : defaultPinTheme,
+                    focusedPinTheme: authState.isBlocked
+                        ? disabledPinTheme
+                        : focusedPinTheme,
+                    submittedPinTheme: authState.isBlocked
+                        ? disabledPinTheme
+                        : submittedPinTheme,
+                    showCursor: !authState.isBlocked,
                     onChanged: (value) {
                       ref.read(authProvider.notifier).setOtp(value);
                     },
                     onCompleted: (pin) {
-                      _onVerify();
+                      if (!authState.isBlocked) {
+                        _onVerify();
+                      }
                     },
                   ),
                 ),
 
-                if (authState.status == AuthStatus.error && authState.errorMessage != null) ...[
+                if (!authState.isBlocked &&
+                    authState.status == AuthStatus.error &&
+                    authState.errorMessage != null) ...[
                   const SizedBox(height: 14),
                   Center(
                     child: Text(
                       authState.errorMessage!,
-                      style: const TextStyle(color: AppColors.error, fontSize: 13, fontWeight: FontWeight.w500),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: AppColors.error,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
                 ],
 
                 const SizedBox(height: 32),
 
-                // Resend Code timer or trigger
+                // Resend Code 30-Second Cooldown & Lockout Check
                 Center(
-                  child: _secondsRemaining > 0
-                      ? Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.timer_outlined, size: 16, color: AppColors.textSecondary),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Resend code in 00:${_secondsRemaining.toString().padLeft(2, '0')}',
-                              style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.w500),
-                            ),
-                          ],
+                  child: authState.isBlocked
+                      ? const Text(
+                          'OTP requests disabled while account is locked',
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
                         )
-                      : Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text("Didn't receive code? ", style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-                            GestureDetector(
-                              onTap: () async {
-                                await ref.read(authProvider.notifier).resendOtp();
-                                _startTimer();
-                                if (context.mounted) {
-                                  AppFlushbar.info(context, title: 'OTP Resent', message: 'A new verification code has been sent.');
-                                }
-                              },
-                              child: const Text(
-                                'Resend OTP',
-                                style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 13),
-                              ),
-                            ),
-                          ],
-                        ),
+                      : (authState.resendCooldown > 0
+                            ? Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.timer_outlined,
+                                    size: 16,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Resend code in 00:${authState.resendCooldown.toString().padLeft(2, '0')}',
+                                    style: const TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Text(
+                                    "Didn't receive code? ",
+                                    style: TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                  GestureDetector(
+                                    onTap: () async {
+                                      final success = await ref
+                                          .read(authProvider.notifier)
+                                          .resendOtp();
+                                      if (context.mounted) {
+                                        if (success) {
+                                          AppFlushbar.info(
+                                            context,
+                                            title: 'OTP Resent',
+                                            message:
+                                                'A new verification code has been sent.',
+                                          );
+                                        } else {
+                                          final err = ref
+                                              .read(authProvider)
+                                              .errorMessage;
+                                          if (err != null) {
+                                            AppFlushbar.error(
+                                              context,
+                                              title: 'Resend Failed',
+                                              message: err,
+                                            );
+                                          }
+                                        }
+                                      }
+                                    },
+                                    child: const Text(
+                                      'Resend OTP',
+                                      style: TextStyle(
+                                        color: AppColors.primary,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              )),
                 ),
 
                 const SizedBox(height: 48),
@@ -254,27 +533,66 @@ class _OtpVerifyScreenState extends ConsumerState<OtpVerifyScreen> {
                 Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
-                    boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6))],
+                    boxShadow: authState.isBlocked
+                        ? []
+                        : [
+                            BoxShadow(
+                              color: AppColors.primary.withValues(alpha: 0.35),
+                              blurRadius: 16,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
                   ),
                   child: SizedBox(
                     width: double.infinity,
                     height: 56,
                     child: ElevatedButton(
-                      onPressed: authState.status == AuthStatus.loading ? null : _onVerify,
+                      onPressed:
+                          (authState.isBlocked ||
+                              authState.status == AuthStatus.loading)
+                          ? null
+                          : _onVerify,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
+                        backgroundColor: authState.isBlocked
+                            ? const Color(0xFFCBD5E1)
+                            : AppColors.primary,
                         foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        disabledBackgroundColor: const Color(0xFFCBD5E1),
+                        disabledForegroundColor: Colors.white70,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
                         elevation: 0,
                       ),
                       child: authState.status == AuthStatus.loading
-                          ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-                          : const Row(
+                          ? const SizedBox(
+                              height: 24,
+                              width: 24,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2.5,
+                              ),
+                            )
+                          : Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Text('VERIFY & CONTINUE', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.8)),
-                                SizedBox(width: 8),
-                                Icon(Icons.check_circle_outline_rounded, size: 20),
+                                Text(
+                                  authState.isBlocked
+                                      ? 'TEMPORARILY LOCKED (${_formatCountdown(authState.lockoutSecondsRemaining)})'
+                                      : 'VERIFY & CONTINUE',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.8,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Icon(
+                                  authState.isBlocked
+                                      ? Icons.lock_outline_rounded
+                                      : Icons.check_circle_outline_rounded,
+                                  size: 20,
+                                ),
                               ],
                             ),
                     ),

@@ -84,33 +84,82 @@ class RideRequestModel {
 
     String id = map['id']?.toString() ?? map['rideId']?.toString() ?? map['ride_id']?.toString() ?? '';
 
+    // Helper to safely extract coordinates from various backend conventions
+    (double, double) extractCoords(dynamic locObj, String prefix) {
+      double lat = 0.0;
+      double lng = 0.0;
+
+      if (locObj is Map) {
+        lat = double.tryParse(locObj['lat']?.toString() ?? locObj['latitude']?.toString() ?? '') ?? 0.0;
+        lng = double.tryParse(locObj['lng']?.toString() ?? locObj['longitude']?.toString() ?? '') ?? 0.0;
+
+        if (lat == 0.0 && lng == 0.0 && locObj['location'] is Map) {
+          final nested = locObj['location'];
+          lat = double.tryParse(nested['lat']?.toString() ?? nested['latitude']?.toString() ?? '') ?? 0.0;
+          lng = double.tryParse(nested['lng']?.toString() ?? nested['longitude']?.toString() ?? '') ?? 0.0;
+          if (lat == 0.0 && lng == 0.0 && nested['coordinates'] is List && (nested['coordinates'] as List).length >= 2) {
+            lng = double.tryParse(nested['coordinates'][0]?.toString() ?? '') ?? 0.0;
+            lat = double.tryParse(nested['coordinates'][1]?.toString() ?? '') ?? 0.0;
+          }
+        }
+
+        if (lat == 0.0 && lng == 0.0 && locObj['coordinates'] is List && (locObj['coordinates'] as List).length >= 2) {
+          lng = double.tryParse(locObj['coordinates'][0]?.toString() ?? '') ?? 0.0;
+          lat = double.tryParse(locObj['coordinates'][1]?.toString() ?? '') ?? 0.0;
+        }
+      }
+
+      if (lat == 0.0 && lng == 0.0) {
+        lat = double.tryParse(map['${prefix}_lat']?.toString() ??
+                map['${prefix}Lat']?.toString() ??
+                map['${prefix}Latitude']?.toString() ??
+                '') ??
+            0.0;
+        lng = double.tryParse(map['${prefix}_lng']?.toString() ??
+                map['${prefix}Lng']?.toString() ??
+                map['${prefix}Longitude']?.toString() ??
+                '') ??
+            0.0;
+
+        final flatLoc = map['${prefix}Location'] ?? map['${prefix}_location'];
+        if ((lat == 0.0 || lng == 0.0) && flatLoc is Map) {
+          lat = double.tryParse(flatLoc['lat']?.toString() ?? flatLoc['latitude']?.toString() ?? '') ?? lat;
+          lng = double.tryParse(flatLoc['lng']?.toString() ?? flatLoc['longitude']?.toString() ?? '') ?? lng;
+          if ((lat == 0.0 || lng == 0.0) && flatLoc['coordinates'] is List && (flatLoc['coordinates'] as List).length >= 2) {
+            lng = double.tryParse(flatLoc['coordinates'][0]?.toString() ?? '') ?? lng;
+            lat = double.tryParse(flatLoc['coordinates'][1]?.toString() ?? '') ?? lat;
+          }
+        }
+      }
+
+      return (lat, lng);
+    }
+
     // Extract pickup
     String pAddress = '';
-    double pLat = 0.0;
-    double pLng = 0.0;
     if (map['pickup'] is Map) {
       pAddress = map['pickup']['address']?.toString() ?? map['pickup']['name']?.toString() ?? '';
-      pLat = double.tryParse(map['pickup']['lat']?.toString() ?? '') ?? 0.0;
-      pLng = double.tryParse(map['pickup']['lng']?.toString() ?? '') ?? 0.0;
     } else {
-      pAddress = map['pickup'] is String ? map['pickup'] : (map['pickupLocation']?.toString() ?? map['pickup_address']?.toString() ?? map['pickupAddress']?.toString() ?? '');
-      pLat = double.tryParse(map['pickup_lat']?.toString() ?? map['pickupLat']?.toString() ?? (map['pickupLocation'] is Map ? map['pickupLocation']['lat']?.toString() : '') ?? '') ?? 0.0;
-      pLng = double.tryParse(map['pickup_lng']?.toString() ?? map['pickupLng']?.toString() ?? (map['pickupLocation'] is Map ? map['pickupLocation']['lng']?.toString() : '') ?? '') ?? 0.0;
+      pAddress = map['pickup'] is String
+          ? map['pickup']
+          : (map['pickupLocation'] is String
+              ? map['pickupLocation']
+              : (map['pickup_address']?.toString() ?? map['pickupAddress']?.toString() ?? ''));
     }
+    final (pLat, pLng) = extractCoords(map['pickup'] ?? map['pickupLocation'], 'pickup');
 
     // Extract drop
     String dAddress = '';
-    double dLat = 0.0;
-    double dLng = 0.0;
     if (map['drop'] is Map) {
       dAddress = map['drop']['address']?.toString() ?? map['drop']['name']?.toString() ?? '';
-      dLat = double.tryParse(map['drop']['lat']?.toString() ?? '') ?? 0.0;
-      dLng = double.tryParse(map['drop']['lng']?.toString() ?? '') ?? 0.0;
     } else {
-      dAddress = map['drop'] is String ? map['drop'] : (map['dropLocation']?.toString() ?? map['dropoff_address']?.toString() ?? map['dropAddress']?.toString() ?? '');
-      dLat = double.tryParse(map['dropoff_lat']?.toString() ?? map['dropLat']?.toString() ?? (map['dropoffLocation'] is Map ? map['dropoffLocation']['lat']?.toString() : '') ?? '') ?? 0.0;
-      dLng = double.tryParse(map['dropoff_lng']?.toString() ?? map['dropLng']?.toString() ?? (map['dropoffLocation'] is Map ? map['dropoffLocation']['lng']?.toString() : '') ?? '') ?? 0.0;
+      dAddress = map['drop'] is String
+          ? map['drop']
+          : (map['dropLocation'] is String
+              ? map['dropLocation']
+              : (map['dropoff_address']?.toString() ?? map['dropAddress']?.toString() ?? ''));
     }
+    final (dLat, dLng) = extractCoords(map['drop'] ?? map['dropLocation'] ?? map['dropoffLocation'], 'drop');
 
     // Extract rider info
     String rName = '';
@@ -202,7 +251,7 @@ class RideRequestModel {
       id: other.id.isNotEmpty ? other.id : id,
       pickupAddress: other.pickupAddress.isNotEmpty ? other.pickupAddress : pickupAddress,
       pickupLat: other.pickupLat != 0.0 ? other.pickupLat : pickupLat,
-      pickupLng: other.pickupLng != 0.0 ? other.pickupLng : dropLng,
+      pickupLng: other.pickupLng != 0.0 ? other.pickupLng : pickupLng,
       dropAddress: other.dropAddress.isNotEmpty ? other.dropAddress : dropAddress,
       dropLat: other.dropLat != 0.0 ? other.dropLat : dropLat,
       dropLng: other.dropLng != 0.0 ? other.dropLng : dropLng,

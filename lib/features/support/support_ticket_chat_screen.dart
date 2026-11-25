@@ -97,6 +97,31 @@ class _SupportTicketChatScreenState extends ConsumerState<SupportTicketChatScree
                       ],
                     ),
                   ],
+                  if (ticket.resolutionNotes != null && ticket.resolutionNotes!.trim().isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.green.shade200),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.check_circle_outline_rounded, size: 16, color: Colors.green.shade700),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Resolution: ${ticket.resolutionNotes!}',
+                              style: TextStyle(fontSize: 12, color: Colors.green.shade900, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -168,7 +193,9 @@ class _SupportTicketChatScreenState extends ConsumerState<SupportTicketChatScree
                                         Align(
                                           alignment: Alignment.bottomRight,
                                           child: Text(
-                                            msg.createdAt.isNotEmpty ? msg.createdAt.substring(11, 16) : '',
+                                            msg.createdAt.length >= 16
+                                                ? msg.createdAt.substring(11, 16)
+                                                : msg.createdAt,
                                             style: TextStyle(fontSize: 9, color: isDriver ? Colors.white60 : Colors.grey),
                                           ),
                                         ),

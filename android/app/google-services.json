@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "117890321123",
+    "project_id": "ridonova-bb2c7",
+    "storage_bucket": "ridonova-bb2c7.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:117890321123:android:742796220782b0803513d6",
+        "android_client_info": {
+          "package_name": "com.app.ridonova_driver"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBaEDYPIy0zLwNniEbLwohjVBVff6uyhMQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:117890321123:android:ddbdf2fa6efa3ba73513d6",
+        "android_client_info": {
+          "package_name": "com.app.ridonova_rider"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBaEDYPIy0zLwNniEbLwohjVBVff6uyhMQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

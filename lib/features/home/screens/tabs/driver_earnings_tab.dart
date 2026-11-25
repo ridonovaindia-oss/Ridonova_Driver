@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/utils/app_flushbar.dart';
+import '../../../kyc/kyc_details_screen.dart';
+import '../../../kyc/kyc_provider.dart';
+import '../../../wallet/presentation/screens/payout_history_screen.dart';
+import '../../../wallet/presentation/widgets/bank_details_sheet.dart';
+import '../../../wallet/presentation/widgets/cashout_bottom_sheet.dart';
+import '../../../wallet/presentation/widgets/pay_dues_bottom_sheet.dart';
 import '../../../wallet/wallet_provider.dart';
 import '../../../wallet/wallet_model.dart';
 
@@ -19,6 +24,7 @@ class _DriverEarningsTabState extends ConsumerState<DriverEarningsTab> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(walletProvider.notifier).fetchWalletEarnings();
       ref.read(walletProvider.notifier).fetchPayouts();
+      ref.read(walletProvider.notifier).fetchTransactions();
     });
   }
 
@@ -26,6 +32,14 @@ class _DriverEarningsTabState extends ConsumerState<DriverEarningsTab> {
   Widget build(BuildContext context) {
     final walletState = ref.watch(walletProvider);
     final wallet = walletState.wallet;
+    final kycData = ref.watch(kycProvider).kycData;
+
+    final kycStatus = wallet.kycStatus.isNotEmpty
+        ? wallet.kycStatus
+        : (kycData.kycStatus.isNotEmpty
+            ? kycData.kycStatus
+            : (kycData.drivingLicenseNumber.isNotEmpty ? 'approved' : 'pending'));
+    final isKycApproved = kycStatus.toLowerCase() == 'approved';
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -37,7 +51,12 @@ class _DriverEarningsTabState extends ConsumerState<DriverEarningsTab> {
           IconButton(
             icon: const Icon(Icons.history_rounded),
             tooltip: 'Payout History',
-            onPressed: () => _showPayoutHistorySheet(context, walletState.payouts),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const PayoutHistoryScreen()),
+              );
+            },
           ),
           IconButton(
             icon: walletState.status == WalletStatus.loading
@@ -50,6 +69,7 @@ class _DriverEarningsTabState extends ConsumerState<DriverEarningsTab> {
             onPressed: () {
               ref.read(walletProvider.notifier).fetchWalletEarnings();
               ref.read(walletProvider.notifier).fetchPayouts();
+              ref.read(walletProvider.notifier).fetchTransactions();
             },
           ),
         ],
@@ -57,8 +77,11 @@ class _DriverEarningsTabState extends ConsumerState<DriverEarningsTab> {
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () async {
-            await ref.read(walletProvider.notifier).fetchWalletEarnings();
-            await ref.read(walletProvider.notifier).fetchPayouts();
+            await Future.wait([
+              ref.read(walletProvider.notifier).fetchWalletEarnings(),
+              ref.read(walletProvider.notifier).fetchPayouts(),
+              ref.read(walletProvider.notifier).fetchTransactions(),
+            ]);
           },
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -66,38 +89,129 @@ class _DriverEarningsTabState extends ConsumerState<DriverEarningsTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Warning Banner if balance is in warning or negative range
-                if (wallet.balance < 0)
+                // 1. Guard Banner: KYC Pending
+                if (!isKycApproved)
                   Container(
-                    margin: const EdgeInsets.only(bottom: 16),
+                    margin: const EdgeInsets.only(bottom: 14),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: wallet.balance <= -1000
-                          ? Colors.red.shade50
-                          : Colors.orange.shade50,
+                      color: const Color(0xFFFEF3C7),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: wallet.balance <= -1000
-                            ? Colors.red.shade300
-                            : Colors.orange.shade300,
-                      ),
+                      border: Border.all(color: const Color(0xFFFDE68A)),
                     ),
                     child: Row(
                       children: [
-                        Icon(
-                          wallet.balance <= -1000 ? Icons.block_rounded : Icons.warning_amber_rounded,
-                          color: wallet.balance <= -1000 ? Colors.red : Colors.orange.shade800,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
+                        const Icon(Icons.verified_user_outlined, color: Color(0xFFB45309), size: 20),
+                        const SizedBox(width: 10),
+                        const Expanded(
                           child: Text(
-                            wallet.balance <= -1000
-                                ? 'Your balance is ₹${wallet.balance.toStringAsFixed(2)}. Ride acceptance is blocked until dues are cleared.'
-                                : 'Wallet dues: ₹${wallet.balance.toStringAsFixed(2)}. Please clear dues to avoid ride blocking.',
+                            'Complete KYC to enable earning withdrawals.',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
-                              color: wallet.balance <= -1000 ? Colors.red.shade900 : Colors.orange.shade900,
+                              color: Color(0xFF92400E),
+                            ),
+                          ),
+                        ),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFB45309),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            minimumSize: const Size(0, 32),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const KycDetailsScreen()),
+                            );
+                          },
+                          child: const Text('Verify KYC', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                // 2. Guard Banner: Negative or Blocked Dues (with actionable Pay Dues CTA)
+                if (wallet.balance <= 0 || wallet.isWalletBlocked)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 14),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.red.shade300),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              wallet.isWalletBlocked ? Icons.block_rounded : Icons.warning_amber_rounded,
+                              color: Colors.red.shade800,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                wallet.balance < 0
+                                    ? 'Pending cash commission dues: ₹${wallet.effectivePendingDues.toStringAsFixed(2)}. Pay dues to keep accepting rides and withdrawing earnings.'
+                                    : 'Wallet balance is ₹0.00. Complete rides to start earning and withdrawing.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.red.shade900,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (wallet.balance < 0 || wallet.hasPendingDues) ...[
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red.shade700,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              icon: const Icon(Icons.payment_rounded, size: 16),
+                              label: Text(
+                                'PAY DUES NOW (₹${wallet.effectivePendingDues.toStringAsFixed(2)})',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
+                              onPressed: () => PayDuesBottomSheet.show(context),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  )
+                // 3. Guard Banner: Daily Limit Reached
+                else if (wallet.payoutRules.isDailyLimitReached)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 14),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.orange.shade300),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.access_time_rounded, color: Colors.orange.shade800, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Daily limit reached (${wallet.payoutRules.maxPayoutsPerDay}/${wallet.payoutRules.maxPayoutsPerDay} today). Available tomorrow.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.orange.shade900,
                             ),
                           ),
                         ),
@@ -159,41 +273,71 @@ class _DriverEarningsTabState extends ConsumerState<DriverEarningsTab> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          const Icon(Icons.account_balance_outlined, color: Colors.white70, size: 14),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              '${wallet.bankDetails.bankName} (${wallet.bankDetails.accountNumber})',
-                              style: const TextStyle(color: Colors.white70, fontSize: 11),
-                              overflow: TextOverflow.ellipsis,
-                            ),
+
+                      // Linked Bank & UPI Summary Row with Manage CTA
+                      InkWell(
+                        onTap: () => BankDetailsSheet.show(context, wallet.bankDetails),
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
                           ),
-                        ],
+                          child: Row(
+                            children: [
+                              const Icon(Icons.account_balance_outlined, color: Colors.white, size: 16),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  wallet.bankDetails.isBankLinked
+                                      ? wallet.bankDetails.bankDestinationLabel
+                                      : (wallet.bankDetails.isUpiLinked
+                                          ? wallet.bankDetails.upiDestinationLabel
+                                          : 'Bank Details Not Linked'),
+                                  style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w600),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: (wallet.bankDetails.isBankLinked || wallet.bankDetails.isUpiLinked)
+                                      ? Colors.green.withValues(alpha: 0.35)
+                                      : Colors.amber.withValues(alpha: 0.35),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  (wallet.bankDetails.isBankLinked || wallet.bankDetails.isUpiLinked)
+                                      ? 'Linked ✅'
+                                      : 'Not Linked ⚠️',
+                                  style: const TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white70, size: 12),
+                            ],
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 16),
+
+                      // Instant Cashout Button
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
-                          onPressed: walletState.isPayoutLoading
-                              ? null
-                              : () => _showInstantCashoutDialog(context, ref, wallet),
+                          onPressed: () => CashoutBottomSheet.show(context),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.primary,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            padding: const EdgeInsets.symmetric(vertical: 13),
                           ),
-                          icon: walletState.isPayoutLoading
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                )
-                              : const Icon(Icons.flash_on_rounded, size: 18),
+                          icon: const Icon(Icons.flash_on_rounded, size: 18),
                           label: const Text(
                             'INSTANT CASHOUT TO BANK',
                             style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
@@ -256,6 +400,20 @@ class _DriverEarningsTabState extends ConsumerState<DriverEarningsTab> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: _buildEarningMiniCard(
+                        title: 'Tips Earned Today',
+                        amount: '+ ₹ ${(wallet.today.tips > 0 ? wallet.today.tips : wallet.totalTipsToday).toStringAsFixed(2)}',
+                        icon: Icons.volunteer_activism_rounded,
+                        color: const Color(0xFF0D9488),
+                        isHighlight: (wallet.today.tips > 0 || wallet.totalTipsToday > 0),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildEarningMiniCard(
                         title: 'Platform Commission',
                         amount: '₹ ${wallet.today.platformCommission.toStringAsFixed(2)}',
                         icon: Icons.remove_circle_outline_rounded,
@@ -263,6 +421,33 @@ class _DriverEarningsTabState extends ConsumerState<DriverEarningsTab> {
                       ),
                     ),
                   ],
+                ),
+
+                // Zero Commission Transparency Notice
+                Container(
+                  margin: const EdgeInsets.only(top: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0FDF4),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFBBF7D0)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.verified_rounded, color: Color(0xFF16A34A), size: 18),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          '100% of customer tips are yours. Ridonova charges 0% platform commission on tips.',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF15803D),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
 
                 const SizedBox(height: 20),
@@ -384,6 +569,56 @@ class _DriverEarningsTabState extends ConsumerState<DriverEarningsTab> {
                       )),
 
                 const SizedBox(height: 20),
+
+                // 5. Recent Transactions / Wallet Ledger
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Recent Transactions',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    if (walletState.isTransactionsLoading)
+                      const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    else
+                      Text(
+                        '${walletState.transactions.length} records',
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                if (walletState.transactions.isEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFF1F5F9)),
+                    ),
+                    child: Center(
+                      child: Text(
+                        walletState.isTransactionsLoading
+                            ? 'Loading transaction history...'
+                            : 'No recent transactions recorded.',
+                        style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                      ),
+                    ),
+                  )
+                else
+                  ...walletState.transactions.take(20).map((txn) => _buildTransactionCard(txn, wallet)),
+
+                const SizedBox(height: 20),
               ],
             ),
           ),
@@ -397,13 +632,17 @@ class _DriverEarningsTabState extends ConsumerState<DriverEarningsTab> {
     required String amount,
     required IconData icon,
     required Color color,
+    bool isHighlight = false,
   }) {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isHighlight ? const Color(0xFFF0FDF4) : Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(
+          color: isHighlight ? const Color(0xFF86EFAC) : const Color(0xFFE2E8F0),
+          width: isHighlight ? 1.2 : 1.0,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -417,13 +656,203 @@ class _DriverEarningsTabState extends ConsumerState<DriverEarningsTab> {
           const SizedBox(height: 2),
           Text(
             amount,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
+              color: isHighlight ? const Color(0xFF15803D) : AppColors.textPrimary,
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildTransactionCard(WalletTransactionModel txn, WalletModel wallet) {
+    final isTip = txn.isTip;
+    final isPayoutWithdrawal = txn.isPayoutWithdrawal;
+    final isPayoutRefund = txn.isPayoutRefund;
+    final isCredit = txn.isCredit;
+
+    // Subtitle formatting adhering to spec:
+    // Debit Transaction: -₹500.00 with subtitle "Payout Withdrawal to HDFC Bank (••••1098)"
+    // Credit / Refund Transaction: +₹500.00 with badge "Refund" and subtitle "Payout Refund (Failed): <reason>"
+    String subtitleText = txn.displaySubtitle;
+    if (isPayoutWithdrawal && subtitleText.isEmpty) {
+      subtitleText = 'Payout Withdrawal to ${wallet.bankDetails.bankDestinationLabel}';
+    } else if (isPayoutRefund && subtitleText.isEmpty) {
+      subtitleText = txn.description.isNotEmpty
+          ? 'Payout Refund (Failed): ${txn.description}'
+          : 'Payout Refund (Failed): Amount credited back';
+    }
+
+    final Color iconBg = isTip
+        ? const Color(0xFFDCFCE7)
+        : isPayoutRefund
+            ? const Color(0xFFDCFCE7)
+            : isPayoutWithdrawal
+                ? const Color(0xFFFEE2E2)
+                : isCredit
+                    ? const Color(0xFFE0F2FE)
+                    : const Color(0xFFFEE2E2);
+
+    final IconData icon = isTip
+        ? Icons.star_rounded
+        : isPayoutRefund
+            ? Icons.replay_rounded
+            : isPayoutWithdrawal
+                ? Icons.arrow_upward_rounded
+                : isCredit
+                    ? Icons.arrow_downward_rounded
+                    : Icons.arrow_upward_rounded;
+
+    final Color iconColor = (isTip || isPayoutRefund)
+        ? const Color(0xFF15803D)
+        : isPayoutWithdrawal
+            ? Colors.red.shade700
+            : isCredit
+                ? const Color(0xFF0284C7)
+                : Colors.red.shade700;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: (isTip || isPayoutRefund)
+              ? const Color(0xFF86EFAC)
+              : isPayoutWithdrawal
+                  ? const Color(0xFFFECACA)
+                  : const Color(0xFFF1F5F9),
+          width: (isTip || isPayoutRefund || isPayoutWithdrawal) ? 1.2 : 1.0,
+        ),
+      ),
+      child: Row(
+        children: [
+          // Icon badge
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(color: iconBg, shape: BoxShape.circle),
+            child: Icon(icon, color: iconColor, size: 20),
+          ),
+          const SizedBox(width: 12),
+
+          // Details
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        txn.displayTitle,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (isTip) ...[
+                      const SizedBox(width: 6),
+                      _buildTag('TIP', const Color(0xFF16A34A)),
+                    ] else if (isPayoutRefund) ...[
+                      const SizedBox(width: 6),
+                      _buildTag('REFUND', const Color(0xFF059669)),
+                    ] else if (isPayoutWithdrawal) ...[
+                      const SizedBox(width: 6),
+                      _buildTag('CASHOUT', Colors.red.shade700),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 4),
+
+                if (subtitleText.isNotEmpty) ...[
+                  Text(
+                    subtitleText,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: isPayoutRefund
+                          ? const Color(0xFF15803D)
+                          : isPayoutWithdrawal
+                              ? Colors.red.shade800
+                              : AppColors.textSecondary,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 3),
+                ],
+
+                Row(
+                  children: [
+                    if (txn.referenceId.isNotEmpty) ...[
+                      Text(
+                        '#${txn.referenceId.length > 8 ? txn.referenceId.substring(txn.referenceId.length - 8) : txn.referenceId}',
+                        style: const TextStyle(fontSize: 10.5, color: AppColors.textSecondary),
+                      ),
+                      const SizedBox(width: 6),
+                      const Text('•', style: TextStyle(color: Colors.grey, fontSize: 10)),
+                      const SizedBox(width: 6),
+                    ],
+                    Text(
+                      txn.createdAt.isNotEmpty
+                          ? (txn.createdAt.length >= 10 ? txn.createdAt.substring(0, 10) : txn.createdAt)
+                          : 'Recent',
+                      style: const TextStyle(fontSize: 10.5, color: AppColors.textSecondary),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+
+          // Amount
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '${isCredit ? '+' : '-'} ₹${txn.amount.toStringAsFixed(2)}',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: isCredit ? const Color(0xFF15803D) : Colors.red.shade700,
+                ),
+              ),
+              if (txn.balanceAfter != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  'Bal: ₹${txn.balanceAfter!.toStringAsFixed(2)}',
+                  style: const TextStyle(fontSize: 10, color: Colors.grey),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTag(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 9,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 0.4,
+        ),
       ),
     );
   }
@@ -471,244 +900,6 @@ class _DriverEarningsTabState extends ConsumerState<DriverEarningsTab> {
           ),
         ],
       ),
-    );
-  }
-
-  void _showInstantCashoutDialog(BuildContext context, WidgetRef ref, WalletModel wallet) {
-    final amountController = TextEditingController(text: wallet.availableBalance.toStringAsFixed(2));
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-            left: 20,
-            right: 20,
-            top: 24,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Instant Cashout to Bank',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-                  ),
-                  Icon(Icons.flash_on_rounded, color: AppColors.primary),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Transfer available balance instantly to ${wallet.bankDetails.bankName} (${wallet.bankDetails.accountNumber}).',
-                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 20),
-              TextField(
-                controller: amountController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: InputDecoration(
-                  labelText: 'Withdrawal Amount (₹)',
-                  prefixText: '₹ ',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Minimum Payout:', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                        Text('₹ ${wallet.payoutRules.minPayoutAmount.toStringAsFixed(2)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Instant Cashout Fee:', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                        Text('₹ ${wallet.payoutRules.instantCashoutFee.toStringAsFixed(2)} (Zero Fee)', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.success)),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Payouts Left Today:', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                        Text('${wallet.payoutRules.payoutsRemainingToday} of ${wallet.payoutRules.maxPayoutsPerDay}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  onPressed: () async {
-                    final amt = double.tryParse(amountController.text.trim()) ?? 0.0;
-                    if (amt < wallet.payoutRules.minPayoutAmount) {
-                      AppFlushbar.error(
-                        context,
-                        title: 'Minimum Payout Error',
-                        message: 'Minimum payout amount is ₹${wallet.payoutRules.minPayoutAmount.toStringAsFixed(2)} as per platform policy.',
-                      );
-                      return;
-                    }
-
-                    Navigator.pop(context);
-                    final success = await ref.read(walletProvider.notifier).requestPayout(amount: amt);
-                    if (!context.mounted) return;
-                    if (success) {
-                      AppFlushbar.success(
-                        context,
-                        title: 'Instant Cashout Successful',
-                        message: '₹ ${amt.toStringAsFixed(2)} successfully transferred to ${wallet.bankDetails.bankName} (${wallet.bankDetails.accountNumber}).',
-                      );
-                    } else {
-                      final err = ref.read(walletProvider).errorMessage;
-                      AppFlushbar.error(
-                        context,
-                        title: 'Cashout Failed',
-                        message: err ?? 'Could not process payout.',
-                      );
-                    }
-                  },
-                  child: const Text('CONFIRM & WITHDRAW', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                ),
-              ),
-              const SizedBox(height: 24),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  void _showPayoutHistorySheet(BuildContext context, List<PayoutItemModel> payouts) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        return Container(
-          padding: const EdgeInsets.all(20),
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.7),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Payout History (Last 30 Days)',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-                  ),
-                  Icon(Icons.history_rounded, color: AppColors.secondary),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Expanded(
-                child: payouts.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'No recent payout history found.',
-                          style: TextStyle(color: AppColors.textSecondary),
-                        ),
-                      )
-                    : ListView.builder(
-                        itemCount: payouts.length,
-                        itemBuilder: (context, index) {
-                          final p = payouts[index];
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            child: Padding(
-                              padding: const EdgeInsets.all(14.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        '₹ ${p.amount.toStringAsFixed(2)}',
-                                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.success),
-                                      ),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: p.status.toLowerCase() == 'processed' || p.status.toLowerCase() == 'success'
-                                              ? Colors.green.shade100
-                                              : Colors.orange.shade100,
-                                          borderRadius: BorderRadius.circular(6),
-                                        ),
-                                        child: Text(
-                                          p.status.toUpperCase(),
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.bold,
-                                            color: p.status.toLowerCase() == 'processed' || p.status.toLowerCase() == 'success'
-                                                ? Colors.green.shade800
-                                                : Colors.orange.shade800,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    '${p.method} • ${p.accountDetails}',
-                                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        'TXN: ${p.transactionId}',
-                                        style: const TextStyle(fontSize: 10, color: Colors.grey),
-                                      ),
-                                      Text(
-                                        p.createdAt.isNotEmpty ? p.createdAt.substring(0, 10) : '',
-                                        style: const TextStyle(fontSize: 10, color: Colors.grey),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 }

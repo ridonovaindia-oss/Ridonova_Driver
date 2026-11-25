@@ -43,3 +43,12 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Build-time environment (API URLs). Keep env/example.json in git.
+env/*.json
+!env/example.json
+
+# Signing keys & secrets
+*.jks
+*.keystore
+key.properties

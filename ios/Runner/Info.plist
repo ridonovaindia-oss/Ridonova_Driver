@@ -2,6 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Temporary: API is on a plain-HTTP IP. Remove once the API has an HTTPS domain. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
@@ -29,7 +35,7 @@
 
 	<!-- Google Maps API Key for iOS -->
 	<key>GMSApiKey</key>
-	<string>AIzaSyCs7YA4eLKHkFbGdQ6ruB9I1A82jJDIfZY</string>
+	<string>$(MAPS_API_KEY)</string>
 
 	<!-- Location Permissions (Google Maps & Live Navigation) -->
 	<key>NSLocationWhenInUseUsageDescription</key>
@@ -48,6 +54,13 @@
 	<!-- Motion Permission for GPS Navigation -->
 	<key>NSMotionUsageDescription</key>
 	<string>Ridonova Captain uses motion detection to optimize GPS navigation accuracy during active rides.</string>
+
+	<!-- Background Modes for FCM Push Notifications -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
 
 	<key>UIApplicationSceneManifest</key>
 	<dict>
