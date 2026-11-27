@@ -2348,92 +2348,206 @@ class _DriverMapHomeTabState extends ConsumerState<DriverMapHomeTab>
               },
             ),
           ]
-          // STEP 2: ARRIVED -> WAITING TIMER & ENTER OTP -> START RIDE
+          // STEP 2: ARRIVED -> WAITING TIMER (SECTION 5.24) & ENTER OTP -> START RIDE
           else if (state.rideStep == RideStep.arrived) ...[
-            // Compact Waiting Timer Card
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFFBEB),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFFDE68A)),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF3C7),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.hourglass_top_rounded,
-                      color: Color(0xFFD97706),
-                      size: 16,
-                    ),
+            Builder(
+              builder: (ctx) {
+                final isEligibleCancel = state.canCancelWithWaitingFee;
+                final isCharging = state.isWaitingCharging;
+                final charge = state.effectiveWaitingCharge;
+                final rate = state.waitingChargePerMinute;
+
+                final Color cardBg = isEligibleCancel
+                    ? const Color(0xFFFEF2F2)
+                    : (isCharging ? const Color(0xFFFFFBEB) : const Color(0xFFECFDF5));
+                final Color cardBorder = isEligibleCancel
+                    ? const Color(0xFFFECACA)
+                    : (isCharging ? const Color(0xFFFDE68A) : const Color(0xFFA7F3D0));
+                final Color iconBg = isEligibleCancel
+                    ? const Color(0xFFFEE2E2)
+                    : (isCharging ? const Color(0xFFFEF3C7) : const Color(0xFFD1FAE5));
+                final Color accentColor = isEligibleCancel
+                    ? const Color(0xFFB91C1C)
+                    : (isCharging ? const Color(0xFFB45309) : const Color(0xFF047857));
+
+                final String statusTitle = isEligibleCancel
+                    ? 'Waiting Fee Earned: ₹${charge.toStringAsFixed(0)}'
+                    : (isCharging
+                        ? 'Waiting Charges Active (+₹${charge.toStringAsFixed(0)})'
+                        : 'Free Waiting (${_formatSeconds(state.waitingFreeRemainingSeconds)} left)');
+
+                final String statusSubtitle = isEligibleCancel
+                    ? '5+ min waited • You may cancel & keep ₹${charge.toStringAsFixed(0)}'
+                    : (isCharging
+                        ? '₹${rate.toStringAsFixed(0)}/min • Cancel unlocks in ${_formatSeconds(state.driverCancelUnlockInSeconds)}'
+                        : '₹${rate.toStringAsFixed(0)}/min applies after 3 min free window');
+
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: cardBg,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: cardBorder),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Waiting for Rider',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                            color: Color(0xFF92400E),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: iconBg,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              isEligibleCancel
+                                  ? Icons.payments_rounded
+                                  : Icons.hourglass_top_rounded,
+                              color: accentColor,
+                              size: 16,
+                            ),
                           ),
-                        ),
-                        Text(
-                          'Driver arrived at pickup point',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.amber.shade900.withValues(alpha: 0.7),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  statusTitle,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                    color: accentColor,
+                                  ),
+                                ),
+                                Text(
+                                  statusSubtitle,
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    color: accentColor.withValues(alpha: 0.8),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: cardBorder),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.timer_outlined,
+                                  color: accentColor,
+                                  size: 12,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _formatSeconds(state.waitingSecondsElapsed),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 13,
+                                    color: accentColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (isEligibleCancel) ...[
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFDC2626),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            icon: const Icon(Icons.cancel_schedule_send_rounded, size: 16),
+                            label: Text(
+                              'Cancel Ride & Keep ₹${charge.toStringAsFixed(0)} Waiting Fee',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                            onPressed: state.isRideLoading
+                                ? null
+                                : () async {
+                                    final confirmed = await showDialog<bool>(
+                                      context: context,
+                                      builder: (dCtx) => AlertDialog(
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(16),
+                                        ),
+                                        title: const Text(
+                                          'Cancel Ride (Rider No-Show)?',
+                                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                        ),
+                                        content: Text(
+                                          'You have waited ${_formatSeconds(state.waitingSecondsElapsed)}. Cancelling now will credit ₹${charge.toStringAsFixed(2)} waiting charges directly to your driver wallet.',
+                                          style: const TextStyle(fontSize: 13),
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () => Navigator.pop(dCtx, false),
+                                            child: const Text('Keep Waiting'),
+                                          ),
+                                          ElevatedButton(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: const Color(0xFFDC2626),
+                                              foregroundColor: Colors.white,
+                                            ),
+                                            onPressed: () => Navigator.pop(dCtx, true),
+                                            child: Text('Cancel & Keep ₹${charge.toStringAsFixed(0)}'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (confirmed != true || !mounted) return;
+                                    final ok = await ref.read(rideProvider.notifier).cancelRide(
+                                          ride.id,
+                                          reason: 'Rider did not show up after 5+ min wait',
+                                          code: 'rider_no_show',
+                                        );
+                                    if (!mounted) return;
+                                    if (ok) {
+                                      ref.read(walletProvider.notifier).fetchWalletEarnings();
+                                      ref.read(walletProvider.notifier).fetchTransactions();
+                                      final msg = ref.read(rideProvider).lastCancelMessage ??
+                                          'Ride cancelled. ₹${charge.toStringAsFixed(2)} waiting charge credited to your wallet.';
+                                      AppFlushbar.success(
+                                        context,
+                                        title: 'Waiting Fee Credited',
+                                        message: msg,
+                                      );
+                                    } else {
+                                      AppFlushbar.error(
+                                        context,
+                                        title: 'Cancel Failed',
+                                        message: 'Could not cancel ride. Please try again.',
+                                      );
+                                    }
+                                  },
                           ),
                         ),
                       ],
-                    ),
+                    ],
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0xFFFDE68A)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.amber.withValues(alpha: 0.1),
-                          blurRadius: 4,
-                          offset: const Offset(0, 1),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.timer_outlined,
-                          color: Color(0xFFB45309),
-                          size: 12,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          _formatSeconds(state.waitingSecondsElapsed),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 13,
-                            color: Color(0xFFB45309),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+                );
+              },
             ),
             const SizedBox(height: 10),
 

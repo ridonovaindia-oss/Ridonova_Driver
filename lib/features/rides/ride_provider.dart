@@ -32,6 +32,11 @@ class RideState {
   final RideRequestModel? incomingPopupRide;
   final int incomingCountdownSeconds;
   final int waitingSecondsElapsed;
+  final int waitingFreeWindowSeconds;
+  final int driverCancelThresholdSeconds;
+  final double waitingChargePerMinute;
+  final double waitingChargeEarned;
+  final String? lastCancelMessage;
   final Map<String, dynamic>? completedFareSummary;
   final bool isSocketConnected;
 
@@ -49,9 +54,32 @@ class RideState {
     this.incomingPopupRide,
     this.incomingCountdownSeconds = 15,
     this.waitingSecondsElapsed = 0,
+    this.waitingFreeWindowSeconds = 180,
+    this.driverCancelThresholdSeconds = 300,
+    this.waitingChargePerMinute = 2.0,
+    this.waitingChargeEarned = 0.0,
+    this.lastCancelMessage,
     this.completedFareSummary,
     this.isSocketConnected = false,
   });
+
+  int get waitingFreeRemainingSeconds =>
+      (waitingFreeWindowSeconds - waitingSecondsElapsed).clamp(0, waitingFreeWindowSeconds);
+
+  int get driverCancelUnlockInSeconds =>
+      (driverCancelThresholdSeconds - waitingSecondsElapsed).clamp(0, driverCancelThresholdSeconds);
+
+  bool get isWaitingCharging => waitingSecondsElapsed > waitingFreeWindowSeconds;
+
+  bool get canCancelWithWaitingFee => waitingSecondsElapsed >= driverCancelThresholdSeconds;
+
+  int get billableWaitingMinutes => waitingSecondsElapsed > waitingFreeWindowSeconds
+      ? ((waitingSecondsElapsed - waitingFreeWindowSeconds) / 60).ceil()
+      : 0;
+
+  double get effectiveWaitingCharge => waitingChargeEarned > 0
+      ? waitingChargeEarned
+      : (billableWaitingMinutes * waitingChargePerMinute);
 
   RideState copyWith({
     bool? isOnline,
@@ -72,6 +100,12 @@ class RideState {
     RideRequestModel? incomingPopupRide,
     int? incomingCountdownSeconds,
     int? waitingSecondsElapsed,
+    int? waitingFreeWindowSeconds,
+    int? driverCancelThresholdSeconds,
+    double? waitingChargePerMinute,
+    double? waitingChargeEarned,
+    String? lastCancelMessage,
+    bool clearLastCancelMessage = false,
     Map<String, dynamic>? completedFareSummary,
     bool? isSocketConnected,
   }) {
@@ -89,6 +123,11 @@ class RideState {
       errorCode: clearErrorCode ? null : (errorCode ?? this.errorCode),
       incomingCountdownSeconds: incomingCountdownSeconds ?? this.incomingCountdownSeconds,
       waitingSecondsElapsed: waitingSecondsElapsed ?? this.waitingSecondsElapsed,
+      waitingFreeWindowSeconds: waitingFreeWindowSeconds ?? this.waitingFreeWindowSeconds,
+      driverCancelThresholdSeconds: driverCancelThresholdSeconds ?? this.driverCancelThresholdSeconds,
+      waitingChargePerMinute: waitingChargePerMinute ?? this.waitingChargePerMinute,
+      waitingChargeEarned: waitingChargeEarned ?? this.waitingChargeEarned,
+      lastCancelMessage: clearLastCancelMessage ? null : (lastCancelMessage ?? this.lastCancelMessage),
       completedFareSummary: clearCompletedSummary ? null : (completedFareSummary ?? this.completedFareSummary),
       isSocketConnected: isSocketConnected ?? this.isSocketConnected,
     );
@@ -217,11 +256,29 @@ class RideNotifier extends StateNotifier<RideState> {
     _waitingTimer = null;
   }
 
-  void _startWaitingTimer() {
+  void _startWaitingTimer({int initialSeconds = 0}) {
     _stopWaitingTimer();
-    state = state.copyWith(waitingSecondsElapsed: 0);
+    final startSec = initialSeconds > 0 ? initialSeconds : 0;
+    final initialBillableMins = startSec > state.waitingFreeWindowSeconds
+        ? ((startSec - state.waitingFreeWindowSeconds) / 60).ceil()
+        : 0;
+    state = state.copyWith(
+      waitingSecondsElapsed: startSec,
+      waitingChargeEarned: initialBillableMins * state.waitingChargePerMinute,
+    );
     _waitingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      state = state.copyWith(waitingSecondsElapsed: state.waitingSecondsElapsed + 1);
+      final nextSec = state.waitingSecondsElapsed + 1;
+      final billableMins = nextSec > state.waitingFreeWindowSeconds
+          ? ((nextSec - state.waitingFreeWindowSeconds) / 60).ceil()
+          : 0;
+      state = state.copyWith(
+        waitingSecondsElapsed: nextSec,
+        waitingChargeEarned: billableMins * state.waitingChargePerMinute,
+      );
+      // Periodically sync with server waiting policy/timer every 30s
+      if (nextSec % 30 == 0 && state.activeRide != null && state.rideStep == RideStep.arrived) {
+        getWaitingCharges(state.activeRide!.id);
+      }
     });
   }
 
@@ -236,9 +293,11 @@ class RideNotifier extends StateNotifier<RideState> {
       }
     });
 
-    // Send live GPS coordinates every 2-3 seconds via socket + REST fallback
+    // Send live GPS coordinates every 2-3 seconds via socket + REST fallback (always active during a ride!)
     _locationTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-      if (state.isOnline && currentLat != null && currentLng != null) {
+      if ((state.isOnline || state.activeRide != null) &&
+          currentLat != null &&
+          currentLng != null) {
         updateLocation(currentLat!, currentLng!);
       }
     });
@@ -393,7 +452,7 @@ class RideNotifier extends StateNotifier<RideState> {
 
   /// 3. Update Live Location (Socket + REST Fallback)
   Future<bool> updateLocation(double lat, double lng) async {
-    if (!state.isOnline) return false;
+    if (!state.isOnline && state.activeRide == null) return false;
 
     currentLat = lat;
     currentLng = lng;
@@ -850,7 +909,11 @@ class RideNotifier extends StateNotifier<RideState> {
 
   /// 10. Cancel Ride (POST /driver/rides/{rideId}/cancel)
   Future<bool> cancelRide(String rideId, {String? reason, String? code}) async {
-    state = state.copyWith(isRideLoading: true, errorMessage: null);
+    state = state.copyWith(
+      isRideLoading: true,
+      errorMessage: null,
+      clearLastCancelMessage: true,
+    );
 
     final token = await _getAuthToken();
     final Map<String, dynamic> body = {
@@ -862,10 +925,28 @@ class RideNotifier extends StateNotifier<RideState> {
 
     final response = await _apiService.post(ApiConstants.cancelDriverRide(rideId), data: body, token: token);
 
+    String? serverMsg;
+    if (response.isSuccess && response.data != null) {
+      try {
+        final raw = response.data is String ? jsonDecode(response.data) : response.data;
+        if (raw is Map && raw['message'] != null) {
+          serverMsg = raw['message'].toString();
+        }
+      } catch (_) {}
+    }
+
     _socketService.leaveRide(rideId);
     _stopWaitingTimer();
 
-    state = state.copyWith(isRideLoading: false, clearActiveRide: true, clearActiveRoute: true, rideStep: RideStep.none);
+    state = state.copyWith(
+      isRideLoading: false,
+      clearActiveRide: true,
+      clearActiveRoute: true,
+      rideStep: RideStep.none,
+      waitingSecondsElapsed: 0,
+      waitingChargeEarned: 0.0,
+      lastCancelMessage: serverMsg,
+    );
     return response.isSuccess;
   }
 
@@ -921,7 +1002,33 @@ class RideNotifier extends StateNotifier<RideState> {
   Future<dynamic> getWaitingCharges(String rideId) async {
     final token = await _getAuthToken();
     final response = await _apiService.get(ApiConstants.getWaitingCharges(rideId), token: token);
-    return response.isSuccess ? response.data : null;
+    if (response.isSuccess && response.data != null) {
+      try {
+        final raw = response.data is String ? jsonDecode(response.data) : response.data;
+        final data = (raw is Map) ? (raw['data'] is Map ? raw['data'] : raw) : null;
+        if (data is Map) {
+          final serverSec = (data['waitingTimeSeconds'] ?? data['waitingSeconds'] as num?)?.toInt();
+          final freeSec = (data['freeWaitingWindowSeconds'] as num?)?.toInt();
+          final thresholdSec = (data['driverCancelThresholdSeconds'] as num?)?.toInt();
+          final ratePerMin = (data['waitingChargePerMinute'] as num?)?.toDouble();
+          final earned = (data['waitingCharges'] ?? data['waitingCharge'] as num?)?.toDouble();
+
+          final syncedSec = (serverSec != null && serverSec > state.waitingSecondsElapsed)
+              ? serverSec
+              : state.waitingSecondsElapsed;
+
+          state = state.copyWith(
+            waitingSecondsElapsed: syncedSec,
+            waitingFreeWindowSeconds: freeSec ?? state.waitingFreeWindowSeconds,
+            driverCancelThresholdSeconds: thresholdSec ?? state.driverCancelThresholdSeconds,
+            waitingChargePerMinute: ratePerMin ?? state.waitingChargePerMinute,
+            waitingChargeEarned: earned ?? state.waitingChargeEarned,
+          );
+        }
+      } catch (_) {}
+      return response.data;
+    }
+    return null;
   }
 
   /// Masked Call API (POST /call/mask-call)
